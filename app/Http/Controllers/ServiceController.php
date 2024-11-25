@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use Exception;
 use Illuminate\Http\Request;
 use App\Models\AgentService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Stevebauman\Location\Facades\Location;
+use Str;
 
 class ServiceController extends Controller
 {
@@ -153,7 +156,7 @@ class ServiceController extends Controller
         }
     }
 
-    public function getAgentServicesApp()
+    public function getAgentServicesApp(Request $request)
     {
         // $user = Auth::user();
         
@@ -187,37 +190,49 @@ class ServiceController extends Controller
         //     }
         //     return response()->json(['success' => true, 'services' => $services]);
         // }elseif ($user->hasRole('admin')) {
-            $allowedCategoryTypes = ['popular', 'most_demanding'];
-            $result = [];
 
-            try {
-                foreach ($allowedCategoryTypes as $categoryType) {
-                    $services = DB::table('agent_services')
-                        ->join('services', 'agent_services.category_id', '=', 'services.id')
-                        ->where('agent_services.service_type', $categoryType) // Fixed the where condition
-                        ->select('agent_services.*', 'services.category_name', 'services.category_type', 'services.image')
-                        ->get();
-                        
-                    foreach ($services as $service) {
-                        if ($service->featured_image && !str_starts_with($service->featured_image, 'http')) {
-                            $service->featured_image = url('storage/' . $service->featured_image);
-                        }
-                        if ($service->banner_image && !str_starts_with($service->banner_image, 'http')) {
-                            $service->banner_image = url('storage/' . $service->banner_image);
-                        }
-                        if ($service->image && !str_starts_with($service->image, 'http')) {
-                            $service->image = url('storage/' . $service->image);
-                        }
+        $ip = $request->ip();
+        $userGeoCode = $this->getGeoCodeFromIp($ip);
+
+        $allowedCategoryTypes = ['popular', 'most_demanding'];
+        $result = [];
+
+        try {
+            foreach ($allowedCategoryTypes as $categoryType) {
+                $services = DB::table('agent_services')
+                    ->join('services', 'agent_services.category_id', '=', 'services.id')
+                    ->where('agent_services.service_type', $categoryType) // Fixed the where condition
+                    ->select('agent_services.*', 'services.category_name', 'services.category_type', 'services.image')
+                    ->get();
+                    
+                foreach ($services as $service) {
+                    if ($service->featured_image && !str_starts_with($service->featured_image, 'http')) {
+                        $service->featured_image = url('storage/' . $service->featured_image);
                     }
-                    $result[$categoryType] = $services;
+                    if ($service->banner_image && !str_starts_with($service->banner_image, 'http')) {
+                        $service->banner_image = url('storage/' . $service->banner_image);
+                    }
+                    if ($service->image && !str_starts_with($service->image, 'http')) {
+                        $service->image = url('storage/' . $service->image);
+                    }
+                    
+                    try {
+                        $serviceGeoCode = $this->getGeoCodeFromAddress("", "", "", "");
+                        $distance = $this->calculateDistance($userGeoCode, $serviceGeoCode);
+                    } catch (Exception $e) {
+                        $distance = "error";
+                    }
+                    $service->distance = $distance;
                 }
-            
-                // Return all services grouped by category type
-                return response()->json(['success' => true, 'services' => $result]);
-            
-            } catch (\Exception $e) {
-                return response()->json(['success' => false, 'message' => 'An error occurred while retrieving services', 'error' => $e->getMessage()], 500);
+                $result[$categoryType] = $services;
             }
+        
+            // Return all services grouped by category type
+            return response()->json(['success' => true, 'services' => $result]);
+        
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'An error occurred while retrieving services', 'error' => $e->getMessage()], 500);
+        }
         // }else{
         //     return response()->json(['error' => 'Unauthorized'], 403);
         // }
@@ -436,5 +451,57 @@ class ServiceController extends Controller
         } catch (ModelNotFoundException $e) {
             return response()->json(['error' => 'Service not found'], 404);
         }
+    }
+
+    private function getGeoCodeFromIp(String $ip) {
+        $currentUserInfo = Location::get($ip);
+
+        if ($currentUserInfo) {
+            return [
+                'latitude' => $currentUserInfo->latitude,
+                'longitude' => $currentUserInfo->longitude,
+            ];
+        }
+
+        // Return null if location data is unavailable
+        return null;
+    }
+
+    private function getGeoCodeFromAddress(String $street, String $city, String $state, String $zip) {
+        $street = '4600+Silver+Hill+Rd';
+        $city = 'Washington';
+        $state = 'DC';
+        $zip = '20233';
+        $benchmark = 'Public_AR_Current';
+        $format = 'json';
+
+        $url = "https://geocoding.geo.census.gov/geocoder/locations/address?street=" . $street . "&city=" . $city . "&state=" . $state . "&zip=" . $zip . "&benchmark=" . $benchmark . "&format=" . $format;
+        $client = new \GuzzleHttp\Client();
+        $response = $client->request('GET', $url);
+
+        $responseBody = json_decode($response->getBody()->getContents(), true);
+
+        $coordinates = $responseBody['result']['addressMatches'][0]['coordinates'];
+        
+        return [
+            'latitude' => $coordinates['y'],
+            'longitude' => $coordinates['x'],
+        ];
+    }
+
+    private function calculateDistance($userGeoCode, $serviceGeoCode) {
+        $userLatitude = $userGeoCode['latitude'];
+        $userLongitude = $userGeoCode['longitude'];
+        $serviceLatitude = $serviceGeoCode['latitude'];
+        $serviceLongitude = $serviceGeoCode['longitude'];
+
+        $earthRadius = 3958.8;
+        $dLat = deg2rad($serviceLatitude - $userLatitude);
+        $dLon = deg2rad($serviceLongitude - $userLongitude);
+        $a = sin($dLat/2) * sin($dLat/2) + cos(deg2rad($userLatitude)) * cos(deg2rad($serviceLatitude)) * sin($dLon/2) * sin($dLon/2);
+        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+        $distance = round($earthRadius * $c, 2);
+
+        return $distance;
     }
 }
