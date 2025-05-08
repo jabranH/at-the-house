@@ -7,19 +7,112 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AgentServiceController;
 use App\Http\Controllers\PasswordResetController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\ServiceController;
-
+use App\Models\User;
 /*
 |--------------------------------------------------------------------------
 | Public Routes
 |--------------------------------------------------------------------------
 */
 
+Route::get('/generate-token', function () {
+    $user = User::find(105); // Replace with the user ID
+    $token = $user->createToken('argon')->plainTextToken;
+
+    return response()->json(['token' => $token]);
+});
 // User registration
 Route::post('/register', [AuthController::class, 'register']);
 
 // User login
-Route::post('/login', [AuthController::class, 'login'])->name('login');
+Route::post('/login', [AuthController::class, 'login'])->name('web.login');
+
+// Mobile App
+Route::prefix('mobile')->group(function () {
+    //change forgot password
+    Route::post('/password-reset/send-otp', [PasswordResetController::class, 'sendOtp']);
+    Route::post('/password-reset/verify-otp', [PasswordResetController::class, 'verifyOtp']);
+    Route::post('/password-reset/change-password', [PasswordResetController::class, 'changePassword']);
+
+    Route::post('/register', [AuthController::class, 'registerApp']);
+    Route::post('/logins', [AuthController::class, 'loginApp'])->name('mobile.login');
+    Route::post('/verify-otp', [AuthController::class, 'verifyOtpApp']);
+    Route::post('/verify-email', [AuthController::class, 'verifyEmailApp']);
+
+    //Route::get('/admin/services/{id}', [ServiceController::class, 'getAgentServiceApp']);
+    Route::get('/admin/services/{serviceId}', [AdminController::class, 'viewServiceApp']);
+    Route::get('/admin/recommended', [AdminController::class, 'getAllRecommended']);
+    Route::get('/admin/relevantsearch/{categoryname}', [AdminController::class, 'getAllRelevantSearch']);
+    Route::middleware('auth:sanctum')->get('/admin/services', [ServiceController::class, 'getAgentServicesApp']);
+
+    // All Category 
+    //Route::middleware('auth:sanctum')->get('/admin/categories/all', [AdminController::class, 'getAllCategory']);
+    Route::get('/admin/categories/all', [AdminController::class, 'getAllCategory']);
+
+    // Explored category
+    //Route::middleware('auth:sanctum')->get('/admin/categories/explored', [AdminController::class, 'getAllExploredCategory']);
+    Route::get('/admin/categories/explored', [AdminController::class, 'getAllExploredCategory']);
+
+    // Catgory by list of services
+    //Route::middleware('auth:sanctum')->get('/admin/category/', [AdminController::class, 'getServicesbyCategoryID']);
+        Route::get('/admin/category', [AdminController::class, 'getServicesbyCategoryID']);
+
+    // Retrive All Agents Services
+    //Route::middleware('auth:sanctum')->get('/agent-services', [ServiceController::class, 'getAllAgentServicesApp']);
+    Route::get('/agent-services', [ServiceController::class, 'getAllAgentServicesApp']);
+
+    //Popular services
+    //Route::middleware('auth:sanctum')->get('/services/popular', [ServiceController::class, 'getAllPopularServices']);
+    Route::get('/services/popular', [ServiceController::class, 'getAllPopularServices']);
+
+    //Single service By id
+    //Route::middleware('auth:sanctum')->get('/services', [ServiceController::class, 'getAgentServiceApp']);
+    Route::get('/services', [ServiceController::class, 'getAgentServiceApp']);
+    //Route::middleware('auth:sanctum')->get('/admin/services', [ServiceController::class, 'getSingleServiceApp']);
+
+    //Route::put('/referral/{serviceId}', [AdminController::class, 'submitReferral']);
+    Route::middleware('role:admin|agent')->group(function () {
+        // Admin and Agent route to create agent service
+        Route::post('/agent-services/create', [ServiceController::class, 'agentServiceCreate']);
+        // Update a specific agent's service by ID
+        Route::put('/agent-services/{id}/update', [ServiceController::class, 'updateAgentService']);
+
+        // Delete a specific agent's service by ID
+        Route::delete('/agent-services/{id}/delete', [ServiceController::class, 'deleteAgentService']);
+    });
+
+    // Get zip code from address using Google Maps API
+    Route::get('/get-zipcode', [MapController::class, 'getZipCodeFromAddress']);
+    Route::get('/get-coordinates', [MapController::class, 'getCoordinatesFromZipCode']);
+});
+
+
+// Routes requiring authentication and email verification
+Route::middleware('auth:sanctum', 'verified')->prefix('mobile')->group(function () {
+
+    Route::post('/change-password', [AuthController::class, 'changePasswordApp']);
+    Route::put('/profile/{user}', [AuthController::class, 'updateProfileApp']);
+    Route::middleware('role:admin')->group(function () {
+        // Register an agent
+        Route::post('/admin/register-agent', [AdminController::class, 'registerAgentApp']);
+    });
+    //Route::get('/agent-services/{id}', [ServiceController::class, 'getAgentServiceApp']);
+    // Get authenticated user details
+    Route::get('/user', function (Request $request) {
+        //return $request->user();
+        return response()->json([
+            'user' => $request->user(),
+            'token' => $request->bearerToken()
+        ]);
+    });
+
+    Route::delete('/user/delete', [AuthController::class, 'deleteAccount']);
+
+    Route::put('/referral/{serviceId}', [AdminController::class, 'submitReferral']);
+    Route::get('/referrals', [AdminController::class, 'allReferralsApp']);
+    Route::get('/single-referral', [AdminController::class, 'singleReferralsApp']);
+});
 
 // Send reset password email
 Route::post('/send-reset-password-email', [PasswordResetController::class, 'send_reset_password_email']);
@@ -30,8 +123,6 @@ Route::post('/reset-password/{token}', [PasswordResetController::class, 'reset']
 // Verify email (you might want to use the email verification feature provided by Laravel)
 Route::post('/email/verify', [AdminController::class, 'verifyEmail']);
 
-
-
 // Verify OTP
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
 
@@ -39,7 +130,7 @@ Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
 
 
 // Admin-only route to get all services
-Route::get('/admin/services', [AdminController::class, 'getAllServices']);
+Route::get('/admin/servicess', [AdminController::class, 'getAllServices']);
 
 /*
 |--------------------------------------------------------------------------
@@ -47,7 +138,7 @@ Route::get('/admin/services', [AdminController::class, 'getAllServices']);
 |--------------------------------------------------------------------------
 */
 
-Route::middleware('auth:sanctum','verified')->group(function () {
+Route::middleware('auth:sanctum', 'verified')->group(function () {
 
     // Get authenticated user details
     Route::get('/user', function (Request $request) {
@@ -58,9 +149,13 @@ Route::middleware('auth:sanctum','verified')->group(function () {
     Route::middleware('role:user')->group(function () {
         // Add user-specific routes if needed
     });
+    //Route::post('/admin/register-agent', [AdminController::class, 'registerAgent'])->middleware('auth:sanctum');
 
     // Routes for admin
     Route::middleware('role:admin')->group(function () {
+        Route::get('/referrals', [AdminController::class, 'allReferrals']);
+        Route::get('/admin/pending-referrals', [AdminController::class, 'pendingReferrals']);
+        Route::put('/referrals/{referralId}', [AdminController::class, 'statusChange']);
         // Register an agent
         Route::post('/admin/register-agent', [AdminController::class, 'registerAgent']);
 
@@ -70,8 +165,11 @@ Route::middleware('auth:sanctum','verified')->group(function () {
         // View all registered agents
         Route::get('/admin/agents', [AdminController::class, 'viewAgents']);
 
+        // Edit Agents
+        Route::get('/admin/agents/{agentId}', [AdminController::class, 'updateAgents']);
+
         // // Admin-only route to get all services
-        // Route::get('/admin/services', [AdminController::class, 'getAllServices']);
+        Route::get('/admin/services', [AdminController::class, 'getAllServices']);
 
         // Admin-only route to create a service
         Route::post('/admin/services/create', [AdminController::class, 'createService']);
@@ -93,6 +191,8 @@ Route::middleware('auth:sanctum','verified')->group(function () {
 
     // Routes for both admin and agent
     Route::middleware('role:admin|agent')->group(function () {
+
+        Route::get('/admin/agent-services', [ServiceController::class, 'getAllAgentsServices']);
         // Admin and Agent route to create agent service
         Route::post('/agent-services/create', [ServiceController::class, 'agentServiceCreate']);
 

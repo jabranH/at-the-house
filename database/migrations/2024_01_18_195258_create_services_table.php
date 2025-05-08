@@ -9,13 +9,14 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-   public function up(): void
+    public function up(): void
     {
         Schema::create('services', function (Blueprint $table) {
-            $table->id();
+            $table->id(); 
             $table->string('category_name');
             $table->string('image')->nullable();
-            $table->enum('category_type', ['popular', 'most_demanding', 'normal'])->default('normal');
+            $table->string('category_type')->nullable(); 
+            $table->string('recommended')->nullable(); 
             $table->timestamps();
         });
     }

@@ -11,14 +11,21 @@ class AgentService extends Model
 
      protected $fillable = [
         'user_id',
+        'service_type',
         'service_name',
         'short_description',
+        'address',
+        'city',
+        'state',
+        'zipcode',
         'message_number',   
         'phone_number',
         'featured_image',
-        'banner_image',
+        'website',
         'category_id',
         'hours',
+        'latitude',
+        'longitude'
     ];
 
     public function user()

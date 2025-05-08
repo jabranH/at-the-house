@@ -13,15 +13,23 @@ return new class extends Migration
     {
         Schema::create('agent_services', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Foreign key with cascade delete
-            $table->foreignId('category_id')->constrained('services')->onDelete('cascade'); // Foreign key with cascade delete
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('category_id')->constrained('services')->onDelete('cascade');
             $table->string('service_name');
             $table->text('short_description');
+            $table->text('address')->nullable();
+            $table->string('city')->nullable();
+            $table->string('state')->nullable();
+            $table->string('zipcode')->nullable();
+            $table->string('website')->nullable();
             $table->string('message_number');
             $table->string('phone_number');
             $table->string('featured_image')->nullable();
             $table->string('banner_image')->nullable();
-            $table->string('hours');
+            $table->text('hours');
+            $table->enum('service_type', ['popular', 'most_demanding', 'normal'])->default('normal');
+            $table->text('latitude')->nullable();
+            $table->text('longitude')->nullable();
             $table->timestamps();
         });
     }
